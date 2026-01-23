@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "./lib/supabase";
 
 /* Pages */
@@ -20,7 +20,7 @@ import NavSearch from "./components/NavSearch";
 import { isAdmin } from "./lib/admin";
 
 /* Protect admin route */
-function AdminGuard({ children }: { children: JSX.Element }) {
+function AdminGuard({ children }: { children: ReactNode }) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ function AdminGuard({ children }: { children: JSX.Element }) {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <>{children}</>;
 }
 
 export default function App() {
