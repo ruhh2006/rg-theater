@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ContentCard from "../components/ContentCard";
-import { getCatalog } from "../lib/catalogStore";
+import { useCatalogDb } from "../lib/catalogDb";
 
 export default function Search() {
   const [params, setParams] = useSearchParams();
   const qParam = params.get("q") ?? "";
   const [q, setQ] = useState(qParam);
 
-  const catalog = getCatalog();
+  const { items: catalog, loading, error } = useCatalogDb();
 
   const results = useMemo(() => {
     const query = qParam.trim().toLowerCase();
@@ -24,6 +24,23 @@ export default function Search() {
     const next = q.trim();
     setParams(next ? { q: next } : {});
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <h1 className="text-2xl font-bold">Error</h1>
+        <p className="mt-2 text-white/70">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -63,3 +80,4 @@ export default function Search() {
     </div>
   );
 }
+

@@ -1,13 +1,53 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
-import { getCatalog } from "../lib/catalogStore";
-import { isSubscribed as getSubscribed } from "../lib/subscription";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useCatalogDb } from "../lib/catalogDb";
+import { getMySubscription, isSubscriptionActive } from "../lib/subscriptionDb";
 
 export default function Watch() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  const catalog = getCatalog();
-  const item = catalog.find((x) => x.id === id);
+  // Content from Supabase
+  const { items: catalog, loading, error } = useCatalogDb();
+
+  // Subscription from Supabase
+  const [subLoading, setSubLoading] = useState(true);
+  const [subActive, setSubActive] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sub = await getMySubscription();
+        setSubActive(isSubscriptionActive(sub));
+      } catch {
+        setSubActive(false);
+      } finally {
+        setSubLoading(false);
+      }
+    })();
+  }, []);
+
+  const item = useMemo(() => catalog.find((x) => x.id === id), [catalog, id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Loading content...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <h1 className="text-2xl font-bold">Error loading content</h1>
+        <p className="mt-2 text-white/70">{error}</p>
+        <Link to="/" className="underline text-white/70 hover:text-white">
+          Back to Home
+        </Link>
+      </div>
+    );
+  }
 
   if (!item) {
     return (
@@ -21,11 +61,11 @@ export default function Watch() {
   }
 
   const isPremium = !item.isFree;
-  const subscribed = getSubscribed();
-  const canWatch = !isPremium || subscribed;
+  const canWatch = !isPremium || subActive;
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Top bar */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
         <button onClick={() => nav(-1)} className="text-white/70 hover:text-white">
           ← Back
@@ -36,17 +76,22 @@ export default function Watch() {
         </div>
       </div>
 
+      {/* Player */}
       <div className="px-6 py-6">
         <h1 className="text-2xl md:text-3xl font-extrabold">{item.title}</h1>
 
         <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
           <div className="h-[55vh] bg-black">
-            {canWatch ? (
+            {subLoading ? (
+              <div className="h-full flex items-center justify-center text-white/50">
+                Checking subscription...
+              </div>
+            ) : canWatch ? (
               item.videoUrl ? (
                 <video className="w-full h-full" controls src={item.videoUrl} />
               ) : (
                 <div className="h-full flex items-center justify-center text-white/50">
-                  No demo video added yet.
+                  No video URL added yet.
                 </div>
               )
             ) : (
@@ -56,7 +101,8 @@ export default function Watch() {
             )}
           </div>
 
-          {isPremium && !subscribed && (
+          {/* Premium lock overlay */}
+          {isPremium && !subLoading && !subActive && (
             <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
               <div className="max-w-md text-center p-6 rounded-2xl border border-white/10 bg-black/60">
                 <div className="text-xl font-bold">🔒 Premium Content</div>
@@ -74,6 +120,7 @@ export default function Watch() {
           )}
         </div>
 
+        {/* Details */}
         <div className="mt-4 text-white/70 text-sm">
           Access:{" "}
           <span className={item.isFree ? "text-green-400" : "text-yellow-400"}>
@@ -81,7 +128,9 @@ export default function Watch() {
           </span>
           {" • "}
           Subscription:{" "}
-          {subscribed ? (
+          {subLoading ? (
+            <span className="text-white/70">Checking...</span>
+          ) : subActive ? (
             <span className="text-green-400 font-semibold">Active</span>
           ) : (
             <span className="text-yellow-400 font-semibold">Not active</span>
@@ -91,5 +140,6 @@ export default function Watch() {
     </div>
   );
 }
+
 
 

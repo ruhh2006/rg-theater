@@ -1,12 +1,46 @@
 import { Link } from "react-router-dom";
-import { getCatalog } from "../lib/catalogStore";
 import ContentCard from "../components/ContentCard";
+import { useCatalogDb } from "../lib/catalogDb";
 
 export default function Home() {
-  const catalog = getCatalog();
+  const { items: catalog, loading, error } = useCatalogDb();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Loading content...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <h1 className="text-2xl font-bold">Error loading content</h1>
+        <p className="mt-2 text-white/70">{error}</p>
+      </div>
+    );
+  }
+
+  if (catalog.length === 0) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <h1 className="text-2xl font-bold">No content yet</h1>
+        <p className="mt-2 text-white/70">
+          Add content from the Admin page.
+        </p>
+        <Link
+          to="/admin"
+          className="inline-block mt-4 bg-red-600 hover:bg-red-500 px-5 py-3 rounded font-semibold"
+        >
+          Go to Admin
+        </Link>
+      </div>
+    );
+  }
 
   const featured = catalog[0];
-  const trending = catalog.slice(0, 6);
+  const trending = catalog.slice(0, 10);
   const free = catalog.filter((x) => x.isFree);
   const movies = catalog.filter((x) => x.type === "movie");
   const series = catalog.filter((x) => x.type === "series");
@@ -23,16 +57,16 @@ export default function Home() {
         <div className="relative z-10 h-full flex items-center px-6 md:px-16">
           <div className="max-w-xl">
             <h1 className="text-4xl md:text-6xl font-extrabold leading-tight">
-              {featured ? featured.title : "RG Theater"}
+              {featured.title}
             </h1>
 
             <p className="mt-4 text-white/70">
-              Watch blockbuster movies, binge-worthy series and top anime.
+              Movies, Series & Anime — Free + Premium, HD & 4K.
             </p>
 
             <div className="mt-6 flex gap-4">
               <Link
-                to={featured ? `/watch/${featured.id}` : "/movies"}
+                to={`/watch/${featured.id}`}
                 className="bg-white text-black px-6 py-3 rounded-lg font-semibold hover:bg-white/90"
               >
                 ▶ Play
@@ -62,13 +96,9 @@ export default function Home() {
   );
 }
 
-function Row({
-  title,
-  items,
-}: {
-  title: string;
-  items: ReturnType<typeof getCatalog>;
-}) {
+function Row({ title, items }: { title: string; items: any[] }) {
+  if (items.length === 0) return null;
+
   return (
     <div>
       <h2 className="text-xl md:text-2xl font-bold mb-4">{title}</h2>
@@ -82,3 +112,4 @@ function Row({
     </div>
   );
 }
+

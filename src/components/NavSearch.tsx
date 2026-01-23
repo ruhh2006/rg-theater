@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCatalog } from "../lib/catalogStore";
+import { useCatalogDb } from "../lib/catalogDb";
 
 export default function NavSearch() {
   const nav = useNavigate();
@@ -8,7 +8,7 @@ export default function NavSearch() {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
-  const catalog = getCatalog();
+  const { items: catalog } = useCatalogDb();
 
   const results = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -94,3 +94,4 @@ export default function NavSearch() {
     </div>
   );
 }
+

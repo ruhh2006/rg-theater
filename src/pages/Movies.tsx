@@ -1,17 +1,34 @@
 import { useMemo, useState } from "react";
 import ContentCard from "../components/ContentCard";
-import { getCatalog } from "../lib/catalogStore";
 import type { Language } from "../data/catalog";
+import { useCatalogDb } from "../lib/catalogDb";
 
 export default function Movies() {
+  const { items: catalog, loading, error } = useCatalogDb();
   const [lang, setLang] = useState<Language | "All">("All");
-  const catalog = getCatalog();
 
   const movies = useMemo(() => {
     return catalog
       .filter((x) => x.type === "movie")
       .filter((x) => (lang === "All" ? true : x.language === lang));
   }, [catalog, lang]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white p-6">
+        <h1 className="text-2xl font-bold">Error</h1>
+        <p className="mt-2 text-white/70">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -33,7 +50,7 @@ export default function Movies() {
       <div className="px-6 pb-10">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           {movies.length === 0 ? (
-            <div className="text-white/70">No movies yet.</div>
+            <div className="text-white/70">No movies found.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               {movies.map((item) => (
@@ -46,4 +63,5 @@ export default function Movies() {
     </div>
   );
 }
+
 
