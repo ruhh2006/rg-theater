@@ -1,112 +1,89 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-const KEY = "rg_theater_user_email";
-
-function setLoggedIn(email: string) {
-  localStorage.setItem(KEY, email);
-}
-
-function getLoggedInEmail(): string | null {
-  return localStorage.getItem(KEY);
-}
-
-function logout() {
-  localStorage.removeItem(KEY);
-}
+import { supabase } from "../lib/supabase";
 
 export default function Login() {
   const nav = useNavigate();
-  const existing = getLoggedInEmail();
-
-  const [email, setEmail] = useState(existing ?? "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  const signIn = async () => {
+    setLoading(true);
+    setError("");
 
-    // Demo login: accept any email + password
-    if (!email.trim()) {
-      alert("Enter email");
-      return;
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      nav("/");
     }
-    if (!password.trim()) {
-      alert("Enter password");
-      return;
-    }
-
-    setLoggedIn(email.trim());
-    alert("✅ Logged in (DEMO)");
-    nav("/");
-    window.location.reload();
   };
 
-  const handleLogout = () => {
-    logout();
-    alert("Logged out");
-    nav("/");
-    window.location.reload();
+  const signUp = async () => {
+    setLoading(true);
+    setError("");
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+    } else {
+      alert("Account created! You can now log in.");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl p-6">
-        <h1 className="text-2xl font-extrabold">Login</h1>
-        <p className="mt-2 text-white/70 text-sm">
-          Demo login for RG Theater (real auth will be added later).
-        </p>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
+      <div className="w-full max-w-md border border-white/10 bg-white/5 rounded-2xl p-6">
+        <h1 className="text-3xl font-extrabold mb-6">Login</h1>
 
-        {existing && (
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3 text-sm">
-            Logged in as: <span className="text-white font-semibold">{existing}</span>
-          </div>
+        {error && (
+          <div className="mb-4 text-sm text-red-400">{error}</div>
         )}
 
-        <form onSubmit={handleLogin} className="mt-6 space-y-4">
-          <div>
-            <label className="text-xs text-white/60">Email</label>
-            <input
-              className="mt-1 w-full p-3 rounded-lg bg-black border border-white/10 outline-none"
-              placeholder="you@example.com"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
+        <input
+          className="w-full mb-3 bg-black/60 border border-white/20 rounded-lg px-3 py-2 outline-none"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-          <div>
-            <label className="text-xs text-white/60">Password</label>
-            <input
-              className="mt-1 w-full p-3 rounded-lg bg-black border border-white/10 outline-none"
-              placeholder="••••••••"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+        <input
+          type="password"
+          className="w-full mb-4 bg-black/60 border border-white/20 rounded-lg px-3 py-2 outline-none"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-          <button className="w-full bg-red-600 hover:bg-red-500 py-3 rounded-lg font-semibold">
-            Login (Demo)
-          </button>
+        <button
+          onClick={signIn}
+          disabled={loading}
+          className="w-full bg-red-600 hover:bg-red-500 py-3 rounded-lg font-semibold mb-3"
+        >
+          {loading ? "Signing in..." : "Login"}
+        </button>
 
-          <button
-            type="button"
-            onClick={() => alert("Google login will be added later with Supabase")}
-            className="w-full bg-white/10 hover:bg-white/15 py-3 rounded-lg font-semibold"
-          >
-            Continue with Google
-          </button>
-
-          {existing && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="w-full text-white/70 hover:text-white underline py-2"
-            >
-              Logout
-            </button>
-          )}
-        </form>
+        <button
+          onClick={signUp}
+          disabled={loading}
+          className="w-full bg-white/10 hover:bg-white/20 py-3 rounded-lg font-semibold"
+        >
+          Create Account
+        </button>
       </div>
     </div>
   );

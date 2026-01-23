@@ -1,10 +1,12 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { catalog } from "../data/catalog";
+import { getCatalog } from "../lib/catalogStore";
 import { isSubscribed as getSubscribed } from "../lib/subscription";
 
 export default function Watch() {
   const { id } = useParams();
   const nav = useNavigate();
+
+  const catalog = getCatalog();
   const item = catalog.find((x) => x.id === id);
 
   if (!item) {
@@ -20,11 +22,10 @@ export default function Watch() {
 
   const isPremium = !item.isFree;
   const subscribed = getSubscribed();
-  const canWatch = !isPremium || subscribed; // ✅ Free always, Premium only if subscribed
+  const canWatch = !isPremium || subscribed;
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Top bar */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
         <button onClick={() => nav(-1)} className="text-white/70 hover:text-white">
           ← Back
@@ -35,7 +36,6 @@ export default function Watch() {
         </div>
       </div>
 
-      {/* Player */}
       <div className="px-6 py-6">
         <h1 className="text-2xl md:text-3xl font-extrabold">{item.title}</h1>
 
@@ -56,7 +56,6 @@ export default function Watch() {
             )}
           </div>
 
-          {/* Premium lock overlay */}
           {isPremium && !subscribed && (
             <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
               <div className="max-w-md text-center p-6 rounded-2xl border border-white/10 bg-black/60">
@@ -92,4 +91,5 @@ export default function Watch() {
     </div>
   );
 }
+
 

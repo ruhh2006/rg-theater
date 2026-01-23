@@ -1,15 +1,17 @@
 import { useMemo, useState } from "react";
 import ContentCard from "../components/ContentCard";
-import { catalog, type Language } from "../data/catalog";
+import { getCatalog } from "../lib/catalogStore";
+import type { Language } from "../data/catalog";
 
 export default function Anime() {
   const [lang, setLang] = useState<Language | "All">("All");
+  const catalog = getCatalog();
 
   const anime = useMemo(() => {
     return catalog
       .filter((x) => x.type === "anime")
       .filter((x) => (lang === "All" ? true : x.language === lang));
-  }, [lang]);
+  }, [catalog, lang]);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -30,11 +32,15 @@ export default function Anime() {
 
       <div className="px-6 pb-10">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {anime.map((item) => (
-              <ContentCard key={item.id} item={item} />
-            ))}
-          </div>
+          {anime.length === 0 ? (
+            <div className="text-white/70">No anime yet.</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {anime.map((item) => (
+                <ContentCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
