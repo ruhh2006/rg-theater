@@ -1,78 +1,114 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import {
-  activateMySubscription,
-  cancelMySubscription,
-  getMySubscription,
-  isSubscriptionActive,
-  type Plan,
-} from "../lib/subscriptionDb";
+import { getMySubscription, isSubscriptionActive } from "../lib/subscriptionDb";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (document.getElementById("razorpay-sdk")) return resolve(true);
+    const script = document.createElement("script");
+    script.id = "razorpay-sdk";
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export default function Pricing() {
   const nav = useNavigate();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<
-    { active: boolean; plan?: Plan; expiresAt?: string } | null
-  >(null);
+  const [user, setUser] = useState<any>(null);
+  const [status, setStatus] = useState<string>("Checking...");
+  const [busy, setBusy] = useState(false);
 
   const refresh = async () => {
     const { data } = await supabase.auth.getUser();
-    setUserEmail(data.user?.email ?? null);
+    setUser(data.user ?? null);
 
     if (!data.user) {
-      setStatus(null);
+      setStatus("Not logged in");
       return;
     }
 
     const sub = await getMySubscription();
-    setStatus(
-      sub
-        ? { active: isSubscriptionActive(sub), plan: sub.plan, expiresAt: sub.expires_at }
-        : { active: false }
-    );
+    setStatus(isSubscriptionActive(sub) ? `Active (${sub?.plan})` : "Not active");
   };
 
   useEffect(() => {
     refresh();
   }, []);
 
-  const subscribe = async (plan: Plan) => {
-    if (!userEmail) {
+  const pay = async (plan: "monthly" | "yearly") => {
+    if (!user) {
       alert("Please login first.");
       nav("/login");
       return;
     }
 
-    setLoading(true);
+    setBusy(true);
     try {
-      await activateMySubscription(plan);
-      alert("✅ Subscription activated (DB demo).");
-      await refresh();
-    } catch (e: any) {
-      alert("❌ " + (e.message ?? "Failed"));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const ok = await loadRazorpayScript();
+      if (!ok) throw new Error("Razorpay SDK failed to load");
 
-  const cancel = async () => {
-    if (!userEmail) {
-      alert("Please login first.");
-      nav("/login");
-      return;
-    }
+      // Create order (Netlify Function)
+      const orderRes = await fetch("/.netlify/functions/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
 
-    setLoading(true);
-    try {
-      await cancelMySubscription();
-      alert("✅ Subscription cancelled (DB demo).");
-      await refresh();
+      const payload = await orderRes.json();
+      if (!orderRes.ok) {
+        throw new Error(payload?.error ? JSON.stringify(payload.error) : "Order error");
+      }
+
+      const { order, keyId } = payload;
+
+      const options = {
+        key: keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "RG Theater",
+        description: plan === "monthly" ? "Monthly Subscription" : "Yearly Subscription",
+        order_id: order.id,
+        handler: async (response: any) => {
+          // Verify payment + activate subscription (Netlify Function)
+          const verifyRes = await fetch("/.netlify/functions/verify-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              plan,
+              userId: user.id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            }),
+          });
+
+          const out = await verifyRes.json();
+          if (!verifyRes.ok) {
+            alert("Payment verification failed: " + (out.error || "unknown"));
+            return;
+          }
+
+          alert("✅ Payment success! Subscription activated.");
+          await refresh();
+        },
+        theme: { color: "#ef4444" },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
     } catch (e: any) {
-      alert("❌ " + (e.message ?? "Failed"));
+      alert("❌ " + (e.message || "Payment failed"));
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
@@ -80,27 +116,20 @@ export default function Pricing() {
     <div className="min-h-screen bg-black text-white p-6">
       <h1 className="text-3xl font-extrabold">Pricing</h1>
       <p className="mt-2 text-white/70">
-        This is DB demo mode. Next step we connect Razorpay to activate subscription.
+        Razorpay Test payment → activates Supabase subscription.
       </p>
 
       <div className="mt-4 text-sm text-white/70">
         Login:{" "}
-        {userEmail ? (
-          <span className="text-white font-semibold">{userEmail}</span>
+        {user?.email ? (
+          <span className="text-white font-semibold">{user.email}</span>
         ) : (
           <span className="text-yellow-300">Not logged in</span>
         )}
       </div>
 
       <div className="mt-2 text-sm text-white/70">
-        Status:{" "}
-        {status?.active ? (
-          <span className="text-green-300 font-semibold">
-            Active ({status.plan}) — expires {status.expiresAt?.slice(0, 10)}
-          </span>
-        ) : (
-          <span className="text-yellow-300 font-semibold">Not active</span>
-        )}
+        Subscription: <span className="text-white">{status}</span>
       </div>
 
       <div className="mt-8 grid md:grid-cols-2 gap-6 max-w-3xl">
@@ -112,11 +141,11 @@ export default function Pricing() {
             <li>• 1080p / 4K (where available)</li>
           </ul>
           <button
-            disabled={loading}
-            onClick={() => subscribe("monthly")}
+            disabled={busy}
+            onClick={() => pay("monthly")}
             className="mt-6 w-full bg-red-600 hover:bg-red-500 py-3 rounded-lg font-semibold disabled:opacity-50"
           >
-            {loading ? "Please wait..." : "Subscribe (DB Demo)"}
+            {busy ? "Please wait..." : "Pay ₹50 (Test)"}
           </button>
         </div>
 
@@ -128,24 +157,15 @@ export default function Pricing() {
             <li>• Premium content access</li>
           </ul>
           <button
-            disabled={loading}
-            onClick={() => subscribe("yearly")}
+            disabled={busy}
+            onClick={() => pay("yearly")}
             className="mt-6 w-full bg-white/10 hover:bg-white/15 py-3 rounded-lg font-semibold disabled:opacity-50"
           >
-            {loading ? "Please wait..." : "Subscribe (DB Demo)"}
+            {busy ? "Please wait..." : "Pay ₹499 (Test)"}
           </button>
         </div>
-      </div>
-
-      <div className="mt-8 max-w-3xl">
-        <button
-          disabled={loading}
-          onClick={cancel}
-          className="text-sm text-white/70 hover:text-white underline disabled:opacity-50"
-        >
-          Cancel subscription (DB Demo)
-        </button>
       </div>
     </div>
   );
 }
+
