@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ContentItem } from "../data/catalog";
-import { fetchContent } from "./contentApi";
+import { fetchApprovedContent } from "./contentApi";
 
 export function useCatalogDb() {
   const [items, setItems] = useState<ContentItem[]>([]);
@@ -10,11 +10,13 @@ export function useCatalogDb() {
   const reload = async () => {
     setLoading(true);
     setError("");
+
     try {
-      const data = await fetchContent();
+      const data = await fetchApprovedContent(); // ✅ only approved
       setItems(data);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load content");
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -26,3 +28,4 @@ export function useCatalogDb() {
 
   return { items, loading, error, reload };
 }
+

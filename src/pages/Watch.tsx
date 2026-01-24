@@ -1,33 +1,69 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCatalogDb } from "../lib/catalogDb";
-import { getMySubscription, isSubscriptionActive } from "../lib/subscriptionDb";
+import { supabase } from "../lib/supabase";
 
 export default function Watch() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  // Content from Supabase
   const { items: catalog, loading, error } = useCatalogDb();
+  const item = useMemo(() => catalog.find((x) => x.id === id), [catalog, id]);
 
-  // Subscription from Supabase
-  const [subLoading, setSubLoading] = useState(true);
-  const [subActive, setSubActive] = useState(false);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [videoErr, setVideoErr] = useState<string>("");
 
   useEffect(() => {
     (async () => {
+      if (!item) return;
+
+      setSignedUrl(null);
+      setVideoErr("");
+
+      // ✅ If this item is old (no videoPath) but has videoUrl -> play directly (no signed needed)
+      if (!item.videoPath && item.videoUrl) return;
+
+      // ✅ If no path and no url
+      if (!item.videoPath && !item.videoUrl) {
+        setVideoErr("No video available.");
+        return;
+      }
+
+      // ✅ Secure signed URL path present
+      setVideoLoading(true);
+
       try {
-        const sub = await getMySubscription();
-        setSubActive(isSubscriptionActive(sub));
-      } catch {
-        setSubActive(false);
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) throw new Error("Please login to watch");
+
+        const res = await fetch("/.netlify/functions/get-signed-video", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ contentId: item.id }),
+        });
+
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || "Failed to get video url");
+
+        setSignedUrl(out.signedUrl);
+      } catch (e: any) {
+        // ✅ If signed failed but old videoUrl exists -> fallback
+        if (item.videoUrl) {
+          setVideoErr("");
+          setSignedUrl(null);
+        } else {
+          setVideoErr(e.message || "Video error");
+        }
       } finally {
-        setSubLoading(false);
+        setVideoLoading(false);
       }
     })();
-  }, []);
-
-  const item = useMemo(() => catalog.find((x) => x.id === id), [catalog, id]);
+  }, [item]);
 
   if (loading) {
     return (
@@ -36,19 +72,14 @@ export default function Watch() {
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
-        <h1 className="text-2xl font-bold">Error loading content</h1>
+        <h1 className="text-2xl font-bold">Error</h1>
         <p className="mt-2 text-white/70">{error}</p>
-        <Link to="/" className="underline text-white/70 hover:text-white">
-          Back to Home
-        </Link>
       </div>
     );
   }
-
   if (!item) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
@@ -60,86 +91,44 @@ export default function Watch() {
     );
   }
 
-  const isPremium = !item.isFree;
-  const canWatch = !isPremium || subActive;
-
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Top bar */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
         <button onClick={() => nav(-1)} className="text-white/70 hover:text-white">
           ← Back
         </button>
-
         <div className="text-sm text-white/70">
           {item.language} • {item.year} • {item.quality}
         </div>
       </div>
 
-      {/* Player */}
       <div className="px-6 py-6">
         <h1 className="text-2xl md:text-3xl font-extrabold">{item.title}</h1>
 
-        <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 bg-white/5 relative">
+        <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
           <div className="h-[55vh] bg-black">
-            {subLoading ? (
+            {videoLoading ? (
               <div className="h-full flex items-center justify-center text-white/50">
-                Checking subscription...
+                Loading video...
               </div>
-            ) : canWatch ? (
-              item.videoUrl ? (
-                <video className="w-full h-full" controls src={item.videoUrl} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-white/50">
-                  No video URL added yet.
-                </div>
-              )
+            ) : videoErr ? (
+              <div className="h-full flex items-center justify-center text-red-300">
+                {videoErr}
+              </div>
+            ) : signedUrl ? (
+              <video className="w-full h-full" controls src={signedUrl} />
+            ) : item.videoUrl ? (
+              <video className="w-full h-full" controls src={item.videoUrl} />
             ) : (
               <div className="h-full flex items-center justify-center text-white/50">
-                Locked
+                No video available.
               </div>
             )}
           </div>
-
-          {/* Premium lock overlay */}
-          {isPremium && !subLoading && !subActive && (
-            <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-              <div className="max-w-md text-center p-6 rounded-2xl border border-white/10 bg-black/60">
-                <div className="text-xl font-bold">🔒 Premium Content</div>
-                <p className="mt-2 text-white/70 text-sm">
-                  Subscribe to watch this title in 1080p / 4K.
-                </p>
-                <Link
-                  to="/pricing"
-                  className="inline-block mt-5 bg-red-600 hover:bg-red-500 px-5 py-3 rounded font-semibold"
-                >
-                  View Plans
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Details */}
-        <div className="mt-4 text-white/70 text-sm">
-          Access:{" "}
-          <span className={item.isFree ? "text-green-400" : "text-yellow-400"}>
-            {item.isFree ? "FREE" : "PREMIUM"}
-          </span>
-          {" • "}
-          Subscription:{" "}
-          {subLoading ? (
-            <span className="text-white/70">Checking...</span>
-          ) : subActive ? (
-            <span className="text-green-400 font-semibold">Active</span>
-          ) : (
-            <span className="text-yellow-400 font-semibold">Not active</span>
-          )}
         </div>
       </div>
     </div>
   );
 }
-
 
 

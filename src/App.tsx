@@ -11,7 +11,13 @@ import Pricing from "./pages/Pricing";
 import Login from "./pages/Login";
 import Watch from "./pages/Watch";
 import Search from "./pages/Search";
+
 import Admin from "./pages/Admin";
+import AdminContent from "./pages/AdminContent";
+
+import Creator from "./pages/Creator";
+import CreatorUpload from "./pages/CreatorUpload";
+import Resubmit from "./pages/Resubmit";
 
 /* Components */
 import NavSearch from "./components/NavSearch";
@@ -47,13 +53,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // get initial session
+    // initial session
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null);
       setLoading(false);
     });
 
-    // listen for auth changes
+    // auth changes
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
@@ -102,10 +108,23 @@ export default function App() {
               Pricing
             </Link>
 
+            {/* Creator links (only if logged in) */}
             {user && (
-              <Link to="/admin" className="hover:text-white">
-                Admin
+              <Link to="/creator" className="hover:text-white">
+                Creator
               </Link>
+            )}
+
+            {/* Admin links (only if logged in; role check is on route) */}
+            {user && (
+              <>
+                <Link to="/admin" className="hover:text-white">
+                  Admin
+                </Link>
+                <Link to="/admin/content" className="hover:text-white">
+                  Approvals
+                </Link>
+              </>
             )}
 
             <NavSearch />
@@ -130,6 +149,7 @@ export default function App() {
 
         {/* ROUTES */}
         <Routes>
+          {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/movies" element={<Movies />} />
           <Route path="/series" element={<Series />} />
@@ -139,7 +159,12 @@ export default function App() {
           <Route path="/watch/:id" element={<Watch />} />
           <Route path="/search" element={<Search />} />
 
-          {/* ADMIN (ROLE PROTECTED) */}
+          {/* Creator */}
+          <Route path="/creator" element={<Creator />} />
+          <Route path="/creator/upload" element={<CreatorUpload />} />
+          <Route path="/creator/resubmit/:id" element={<Resubmit />} />
+
+          {/* Admin (ROLE PROTECTED) */}
           <Route
             path="/admin"
             element={
@@ -152,11 +177,26 @@ export default function App() {
               )
             }
           />
+
+          {/* Admin approvals (ROLE PROTECTED) */}
+          <Route
+            path="/admin/content"
+            element={
+              user ? (
+                <AdminGuard>
+                  <AdminContent />
+                </AdminGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
         </Routes>
       </div>
     </BrowserRouter>
   );
 }
+
 
 
 

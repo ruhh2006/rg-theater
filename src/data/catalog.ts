@@ -11,6 +11,7 @@ export type ContentItem = {
   quality: "1080p" | "4K";
   thumbnail: string;
   videoUrl?: string;
+ videoPath?: string; // ✅ NEW
 };
 
 export const catalog: ContentItem[] = [
