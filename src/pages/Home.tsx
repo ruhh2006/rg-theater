@@ -25,16 +25,29 @@ export default function Home() {
   if (catalog.length === 0) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
-        <h1 className="text-2xl font-bold">No content yet</h1>
+        <h1 className="text-3xl font-extrabold">RG Theater</h1>
         <p className="mt-2 text-white/70">
-          Add content from the Admin page.
+          India’s creator-first OTT platform.
         </p>
-        <Link
-          to="/admin"
-          className="inline-block mt-4 bg-red-600 hover:bg-red-500 px-5 py-3 rounded font-semibold"
-        >
-          Go to Admin
-        </Link>
+        <p className="mt-4 text-white/60">
+          No content yet. Creators can start uploading today.
+        </p>
+
+        <div className="mt-6 flex gap-4">
+          <Link
+            to="/creator/upload"
+            className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded font-semibold"
+          >
+            Become a Creator
+          </Link>
+
+          <Link
+            to="/login"
+            className="border border-white/20 px-6 py-3 rounded font-semibold"
+          >
+            Login
+          </Link>
+        </div>
       </div>
     );
   }
@@ -57,27 +70,37 @@ export default function Home() {
         <div className="relative z-10 h-full flex items-center px-6 md:px-16">
           <div className="max-w-xl">
             <h1 className="text-4xl md:text-6xl font-extrabold leading-tight">
-              {featured.title}
+              RG Theater
             </h1>
 
-            <p className="mt-4 text-white/70">
-              Movies, Series & Anime — Free + Premium, HD & 4K.
+            <p className="mt-4 text-lg text-white/80">
+              India’s Creator-First OTT Platform
+            </p>
+
+            <p className="mt-2 text-white/60">
+              Watch original anime, indie web series, and short films
+              created by independent Indian creators.
             </p>
 
             <div className="mt-6 flex gap-4">
               <Link
                 to={`/watch/${featured.id}`}
-                className="bg-white text-black px-6 py-3 rounded-lg font-semibold hover:bg-white/90"
+                className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg font-semibold"
               >
-                ▶ Play
+                ▶ Explore Content
               </Link>
+
               <Link
-                to="/pricing"
+                to="/creator/upload"
                 className="bg-white/10 px-6 py-3 rounded-lg font-semibold hover:bg-white/20"
               >
-                More Info
+                Become a Creator
               </Link>
             </div>
+
+            <p className="mt-6 text-xs text-white/50">
+              Built by a student-led creator community ❤️
+            </p>
           </div>
         </div>
 
