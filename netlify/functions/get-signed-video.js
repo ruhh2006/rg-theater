@@ -17,13 +17,8 @@ function isActive(sub) {
 function normalizePath(p) {
   if (!p) return "";
   let path = String(p).trim();
-
-  // remove leading slashes
   path = path.replace(/^\/+/, "");
-
-  // if stored as videos/xxx, strip bucket prefix
   if (path.startsWith("videos/")) path = path.slice("videos/".length);
-
   return path;
 }
 
@@ -48,14 +43,14 @@ exports.handler = async (event) => {
       return json(500, { error: "Missing server env vars" });
     }
 
-    // 1) Verify user token
+    // Verify user token
     const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: ANON },
     });
     if (!userRes.ok) return json(401, { error: "Invalid token" });
     const user = await userRes.json();
 
-    // 2) Fetch content row (service role)
+    // Fetch content row (service role)
     const contentRes = await fetch(
       `${SUPABASE_URL}/rest/v1/content?id=eq.${contentId}&select=*`,
       { headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE } }
@@ -64,7 +59,7 @@ exports.handler = async (event) => {
     const row = rows?.[0];
     if (!row) return json(404, { error: "Content not found" });
 
-    // 3) Premium check
+    // Premium check
     const isPremium = !row.is_free;
     if (isPremium) {
       const subRes = await fetch(
@@ -76,33 +71,26 @@ exports.handler = async (event) => {
       if (!isActive(sub)) return json(403, { error: "Subscription inactive" });
     }
 
-    // 4) Path normalize
     const rawPath = normalizePath(row.video_path);
     if (!rawPath) return json(400, { error: "Missing video_path" });
 
-    // ✅ 5) FIRST: Check object exists (this will tell truth)
-    // HEAD object via storage endpoint
+    // HEAD check
     const headRes = await fetch(
       `${SUPABASE_URL}/storage/v1/object/videos/${encodeURI(rawPath)}`,
       {
         method: "HEAD",
-        headers: {
-          Authorization: `Bearer ${SERVICE}`,
-          apikey: SERVICE,
-        },
+        headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE },
       }
     );
 
     if (!headRes.ok) {
-      // This is the real reason of 404
       return json(404, {
         error: "Video file not found in storage for this video_path",
         rawPath,
-        hint: "Check Storage > videos bucket exact path and paste full path (folder/filename.mp4) into content.video_path",
       });
     }
 
-    // ✅ 6) Create signed URL
+    // Sign URL
     const signRes = await fetch(
       `${SUPABASE_URL}/storage/v1/object/sign/videos/${encodeURI(rawPath)}`,
       {
@@ -128,11 +116,16 @@ exports.handler = async (event) => {
       return json(500, { error: "Failed to sign video", rawPath, details: signJson });
     }
 
-    const signedUrl = `${SUPABASE_URL}${signJson.signedURL}`;
+    // ✅ FIX: signedURL usually starts with "/object/sign/..."
+    // We must prefix "/storage/v1"
+    const signedPath = signJson.signedURL || "";
+    const signedUrl = signedPath.startsWith("/storage/v1")
+      ? `${SUPABASE_URL}${signedPath}`
+      : `${SUPABASE_URL}/storage/v1${signedPath}`;
+
     return json(200, { signedUrl, rawPath });
   } catch (e) {
     return json(500, { error: e.message || "Server error" });
   }
 };
-
 
