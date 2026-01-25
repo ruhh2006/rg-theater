@@ -14,43 +14,24 @@ function isActive(sub) {
   return Date.now() < new Date(sub.expires_at).getTime();
 }
 
-// ✅ normalize storage path
 function normalizePath(p) {
   if (!p) return "";
-  let path = String(p);
-
-  // remove leading slashes
+  let path = String(p).trim();
   path = path.replace(/^\/+/, "");
-
-  // if someone accidentally stored "videos/...." then strip bucket prefix
   if (path.startsWith("videos/")) path = path.slice("videos/".length);
-
   return path;
-}
-
-// ✅ encode each segment safely (spaces etc)
-function encodePath(path) {
-  return path
-    .split("/")
-    .filter(Boolean)
-    .map((seg) => encodeURIComponent(seg))
-    .join("/");
 }
 
 exports.handler = async (event) => {
   try {
     const authHeader = event.headers.authorization || event.headers.Authorization;
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
     if (!token) return json(401, { error: "Missing auth token" });
 
-    let payload;
+    let payload = {};
     try {
       payload = JSON.parse(event.body || "{}");
-    } catch {
-      payload = {};
-    }
-
+    } catch {}
     const contentId = payload.contentId;
     if (!contentId) return json(400, { error: "Missing contentId" });
 
@@ -62,25 +43,23 @@ exports.handler = async (event) => {
       return json(500, { error: "Missing server env vars" });
     }
 
-    // 1) Verify user token
+    // verify user
     const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: ANON },
     });
     if (!userRes.ok) return json(401, { error: "Invalid token" });
     const user = await userRes.json();
 
-    // 2) Fetch content row (service role)
+    // fetch content row (service role)
     const contentRes = await fetch(
       `${SUPABASE_URL}/rest/v1/content?id=eq.${contentId}&select=*`,
-      {
-        headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE },
-      }
+      { headers: { Authorization: `Bearer ${SERVICE}`, apikey: SERVICE } }
     );
     const rows = await contentRes.json();
     const row = rows?.[0];
     if (!row) return json(404, { error: "Content not found" });
 
-    // 3) Premium check
+    // premium check
     const isPremium = !row.is_free;
     if (isPremium) {
       const subRes = await fetch(
@@ -92,11 +71,12 @@ exports.handler = async (event) => {
       if (!isActive(sub)) return json(403, { error: "Subscription inactive" });
     }
 
-    // 4) Signed URL for private video
+    // sign
     const rawPath = normalizePath(row.video_path);
     if (!rawPath) return json(400, { error: "Missing video_path" });
 
-    const safePath = encodePath(rawPath);
+    // ✅ encodeURI keeps slashes but encodes spaces etc
+    const safePath = encodeURI(rawPath);
 
     const signedRes = await fetch(
       `${SUPABASE_URL}/storage/v1/object/sign/videos/${safePath}`,
@@ -111,21 +91,27 @@ exports.handler = async (event) => {
       }
     );
 
-    const signed = await signedRes.json();
+    const signedText = await signedRes.text();
+    let signed = {};
+    try {
+      signed = signedText ? JSON.parse(signedText) : {};
+    } catch {
+      signed = { raw: signedText };
+    }
+
     if (!signedRes.ok) {
       return json(500, {
         error: "Failed to sign video",
-        details: signed,
         rawPath,
+        details: signed,
       });
     }
 
-    // signed.signedURL is path; make full url
     const signedUrl = `${SUPABASE_URL}${signed.signedURL}`;
-
     return json(200, { signedUrl, rawPath });
   } catch (e) {
     return json(500, { error: e.message || "Server error" });
   }
 };
+
 
