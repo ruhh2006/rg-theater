@@ -8,11 +8,12 @@ export default function Watch() {
   const nav = useNavigate();
 
   const { items: catalog, loading, error } = useCatalogDb();
-  const item = useMemo(() => catalog.find((x) => x.id === id), [catalog, id]);
+  const item = useMemo(() => catalog.find((x: any) => x.id === id), [catalog, id]);
 
   const [videoLoading, setVideoLoading] = useState(false);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [videoErr, setVideoErr] = useState<string>("");
+  const [debug, setDebug] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -20,13 +21,16 @@ export default function Watch() {
 
       setSignedUrl(null);
       setVideoErr("");
+      setDebug("");
 
-      // ✅ Old content fallback
-      if (!item.videoPath && item.videoUrl) return;
+      // OLD fallback
+      if (!item.videoPath && item.videoUrl) {
+        setDebug("DEBUG: Using legacy videoUrl (old content).");
+        return;
+      }
 
-      // ✅ No path and no url
       if (!item.videoPath && !item.videoUrl) {
-        setVideoErr("No video available.");
+        setVideoErr("No video available (videoPath/videoUrl missing).");
         return;
       }
 
@@ -34,7 +38,7 @@ export default function Watch() {
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
-        if (!token) throw new Error("Please login to watch");
+        if (!token) throw new Error("No session token. Please login again.");
 
         const res = await fetch("/.netlify/functions/get-signed-video", {
           method: "POST",
@@ -45,8 +49,9 @@ export default function Watch() {
           body: JSON.stringify({ contentId: item.id }),
         });
 
-        // ✅ SAFELY READ TEXT FIRST
         const text = await res.text();
+        setDebug(`DEBUG: get-signed-video status=${res.status}\nDEBUG: body=${text}`);
+
         let out: any = {};
         try {
           out = text ? JSON.parse(text) : {};
@@ -55,19 +60,16 @@ export default function Watch() {
         }
 
         if (!res.ok) {
-          throw new Error(out?.error ? String(out.error) : "Failed to get signed URL");
+          throw new Error(out?.error ? String(out.error) : "Signed URL request failed");
         }
 
-        if (!out.signedUrl) throw new Error("Signed URL missing from server response");
+        if (!out.signedUrl) {
+          throw new Error("Signed URL missing in response.");
+        }
+
         setSignedUrl(out.signedUrl);
       } catch (e: any) {
-        // ✅ If signed failed but old videoUrl exists -> fallback
-        if (item.videoUrl) {
-          setVideoErr("");
-          setSignedUrl(null);
-        } else {
-          setVideoErr(e?.message ?? "Video error");
-        }
+        setVideoErr(e?.message ?? "Video error");
       } finally {
         setVideoLoading(false);
       }
@@ -116,6 +118,24 @@ export default function Watch() {
       <div className="px-6 py-6">
         <h1 className="text-2xl md:text-3xl font-extrabold">{item.title}</h1>
 
+        {/* DEBUG PANEL */}
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-white/70 whitespace-pre-wrap">
+          {debug ? debug : "DEBUG: waiting... (open this page after deploy)"}
+          {signedUrl && (
+            <div className="mt-2">
+              Signed URL test:{" "}
+              <a
+                className="underline text-white"
+                href={signedUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open signed url
+              </a>
+            </div>
+          )}
+        </div>
+
         <div className="mt-4 rounded-2xl overflow-hidden border border-white/10 bg-white/5">
           <div className="h-[55vh] bg-black">
             {videoLoading ? (
@@ -127,9 +147,23 @@ export default function Watch() {
                 {videoErr}
               </div>
             ) : signedUrl ? (
-              <video className="w-full h-full" controls src={signedUrl} />
+              <video
+                className="w-full h-full"
+                controls
+                playsInline
+                preload="metadata"
+                src={signedUrl}
+                onError={() => setVideoErr("Browser failed to load this signed URL video.")}
+              />
             ) : item.videoUrl ? (
-              <video className="w-full h-full" controls src={item.videoUrl} />
+              <video
+                className="w-full h-full"
+                controls
+                playsInline
+                preload="metadata"
+                src={item.videoUrl}
+                onError={() => setVideoErr("Legacy videoUrl failed to load.")}
+              />
             ) : (
               <div className="h-full flex items-center justify-center text-white/50">
                 No video available.
