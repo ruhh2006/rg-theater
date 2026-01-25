@@ -4,6 +4,8 @@ import { supabase } from "../lib/supabase";
 import { isCreator } from "../lib/roles";
 import { uploadFileToBucket } from "../lib/storage";
 
+const MAX_VIDEO_MB = 50; // ✅ Supabase-safe limit
+
 export default function CreatorUpload() {
   const nav = useNavigate();
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -42,7 +44,15 @@ export default function CreatorUpload() {
     if (!title.trim()) return alert("Enter title");
     if (!posterFile) return alert("Select a poster image file");
     if (!videoFile) return alert("Select a video file");
-    if (!rightsConfirmed) return alert("You must confirm you own the rights before uploading.");
+    if (!rightsConfirmed)
+      return alert("You must confirm you own the rights before uploading.");
+
+    // ✅ 50MB enforcement (matches Supabase)
+    if (videoFile.size > MAX_VIDEO_MB * 1024 * 1024) {
+      return alert(
+        `Video size exceeds ${MAX_VIDEO_MB} MB.\n\nTip: Compress to 1080p (H.264) using HandBrake.`
+      );
+    }
 
     setLoading(true);
     try {
@@ -54,7 +64,7 @@ export default function CreatorUpload() {
         return;
       }
 
-      // Upload poster (PUBLIC bucket is ok)
+      // Upload poster (PUBLIC bucket)
       const posterPath = `${user.id}/${Date.now()}-${posterFile.name}`;
       const posterUrl = await uploadFileToBucket({
         bucket: "posters",
@@ -70,7 +80,7 @@ export default function CreatorUpload() {
         path: videoPath,
       });
 
-      // Insert pending content row (store video_path, not public url)
+      // Insert pending content
       const { error } = await supabase.from("content").insert({
         title: title.trim(),
         type,
@@ -79,8 +89,8 @@ export default function CreatorUpload() {
         is_free: isFree,
         quality,
         thumbnail: posterUrl,
-        video_url: null, // keep null now
-        video_path: videoPath, // ✅ important
+        video_url: null,
+        video_path: videoPath,
         creator_id: user.id,
         status: "pending",
         rights_confirmed: true,
@@ -169,12 +179,18 @@ export default function CreatorUpload() {
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={isFree}
+            onChange={(e) => setIsFree(e.target.checked)}
+          />
           Free content
         </label>
 
         <div>
-          <label className="text-xs text-white/60">Poster Image (jpg/png)</label>
+          <label className="text-xs text-white/60">
+            Poster Image (jpg/png)
+          </label>
           <input
             type="file"
             accept="image/*"
@@ -184,13 +200,27 @@ export default function CreatorUpload() {
         </div>
 
         <div>
-          <label className="text-xs text-white/60">Video File (mp4)</label>
+          <label className="text-xs text-white/60">
+            Video File (mp4) — Max {MAX_VIDEO_MB} MB
+          </label>
           <input
             type="file"
             accept="video/*"
             className="mt-2 block w-full text-sm text-white/70"
             onChange={(e) => setVideoFile(e.target.files?.[0] ?? null)}
           />
+        </div>
+
+        {/* Compression tips */}
+        <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-white/70">
+          <div className="font-semibold mb-1">Compression Tips (Recommended)</div>
+          <ul className="list-disc ml-4 space-y-1">
+            <li>Use <b>HandBrake</b> (free)</li>
+            <li>Preset: <b>Fast 1080p30</b></li>
+            <li>Format: <b>MP4</b>, Codec: <b>H.264</b></li>
+            <li>Avg bitrate: <b>1500–2500 kbps</b></li>
+            <li>Audio: <b>AAC 128 kbps</b></li>
+          </ul>
         </div>
 
         <div className="mt-2 border border-white/10 rounded-xl bg-black/30 p-4">
@@ -222,4 +252,5 @@ export default function CreatorUpload() {
     </div>
   );
 }
+
 

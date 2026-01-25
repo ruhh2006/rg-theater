@@ -21,18 +21,16 @@ export default function Watch() {
       setSignedUrl(null);
       setVideoErr("");
 
-      // ✅ If this item is old (no videoPath) but has videoUrl -> play directly (no signed needed)
+      // ✅ Old content fallback
       if (!item.videoPath && item.videoUrl) return;
 
-      // ✅ If no path and no url
+      // ✅ No path and no url
       if (!item.videoPath && !item.videoUrl) {
         setVideoErr("No video available.");
         return;
       }
 
-      // ✅ Secure signed URL path present
       setVideoLoading(true);
-
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
@@ -47,9 +45,20 @@ export default function Watch() {
           body: JSON.stringify({ contentId: item.id }),
         });
 
-        const out = await res.json();
-        if (!res.ok) throw new Error(out.error || "Failed to get video url");
+        // ✅ SAFELY READ TEXT FIRST
+        const text = await res.text();
+        let out: any = {};
+        try {
+          out = text ? JSON.parse(text) : {};
+        } catch {
+          out = {};
+        }
 
+        if (!res.ok) {
+          throw new Error(out?.error ? String(out.error) : "Failed to get signed URL");
+        }
+
+        if (!out.signedUrl) throw new Error("Signed URL missing from server response");
         setSignedUrl(out.signedUrl);
       } catch (e: any) {
         // ✅ If signed failed but old videoUrl exists -> fallback
@@ -57,7 +66,7 @@ export default function Watch() {
           setVideoErr("");
           setSignedUrl(null);
         } else {
-          setVideoErr(e.message || "Video error");
+          setVideoErr(e?.message ?? "Video error");
         }
       } finally {
         setVideoLoading(false);
@@ -72,6 +81,7 @@ export default function Watch() {
       </div>
     );
   }
+
   if (error) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
@@ -80,6 +90,7 @@ export default function Watch() {
       </div>
     );
   }
+
   if (!item) {
     return (
       <div className="min-h-screen bg-black text-white p-6">
@@ -130,5 +141,6 @@ export default function Watch() {
     </div>
   );
 }
+
 
 
