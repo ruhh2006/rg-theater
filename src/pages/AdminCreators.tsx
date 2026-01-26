@@ -33,24 +33,34 @@ export default function AdminCreators() {
   }, []);
 
   const approve = async (row: AppRow) => {
-    // 1) set user role creator
-    const { error: roleErr } = await supabase
-      .from("profiles")
-      .update({ role: "creator" })
-      .eq("id", row.user_id);
+    try {
+      // ✅ 1) UPSERT profile role = creator (works even if profile row missing)
+      const { error: upsertErr } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: row.user_id,
+            email: row.email,
+            role: "creator",
+          },
+          { onConflict: "id" }
+        );
 
-    if (roleErr) return alert("❌ Role update failed: " + roleErr.message);
+      if (upsertErr) throw new Error("Role update failed: " + upsertErr.message);
 
-    // 2) update application status
-    const { error: appErr } = await supabase
-      .from("creator_applications")
-      .update({ status: "approved", rejection_reason: null })
-      .eq("id", row.id);
+      // ✅ 2) Update application status = approved
+      const { error: appErr } = await supabase
+        .from("creator_applications")
+        .update({ status: "approved", rejection_reason: null })
+        .eq("id", row.id);
 
-    if (appErr) return alert("❌ Application update failed: " + appErr.message);
+      if (appErr) throw new Error("Application update failed: " + appErr.message);
 
-    alert("✅ Approved! Role set to creator.");
-    await load();
+      alert("✅ Approved! User is now CREATOR.");
+      await load();
+    } catch (e: any) {
+      alert("❌ " + (e.message ?? "Approve failed"));
+    }
   };
 
   const reject = async (row: AppRow) => {
