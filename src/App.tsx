@@ -14,10 +14,12 @@ import Search from "./pages/Search";
 
 import Admin from "./pages/Admin";
 import AdminContent from "./pages/AdminContent";
+import AdminCreators from "./pages/AdminCreators";
 
 import Creator from "./pages/Creator";
 import CreatorUpload from "./pages/CreatorUpload";
 import Resubmit from "./pages/Resubmit";
+import ApplyCreator from "./pages/ApplyCreator";
 
 /* Components */
 import NavSearch from "./components/NavSearch";
@@ -53,18 +55,14 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // initial session
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null);
       setLoading(false);
     });
 
-    // auth changes
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-      }
-    );
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
     return () => {
       listener.subscription.unsubscribe();
@@ -84,46 +82,30 @@ export default function App() {
       <div className="min-h-screen bg-black text-white">
         {/* NAVBAR */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 gap-4">
-          <Link
-            to="/"
-            className="text-2xl font-extrabold text-red-600 no-underline whitespace-nowrap"
-          >
+          <Link to="/" className="text-2xl font-extrabold text-red-600 no-underline whitespace-nowrap">
             RG Theater
           </Link>
 
           <nav className="flex items-center gap-4 md:gap-6 text-sm text-white/80 flex-wrap">
-            <Link to="/" className="hover:text-white">
-              Home
-            </Link>
-            <Link to="/movies" className="hover:text-white">
-              Movies
-            </Link>
-            <Link to="/series" className="hover:text-white">
-              Series
-            </Link>
-            <Link to="/anime" className="hover:text-white">
-              Anime
-            </Link>
-            <Link to="/pricing" className="hover:text-white">
-              Pricing
+            <Link to="/" className="hover:text-white">Home</Link>
+            <Link to="/movies" className="hover:text-white">Movies</Link>
+            <Link to="/series" className="hover:text-white">Series</Link>
+            <Link to="/anime" className="hover:text-white">Anime</Link>
+
+            {/* Creator apply (public) */}
+            <Link to="/apply-creator" className="hover:text-white">
+              Apply as Creator
             </Link>
 
-            {/* Creator links (only if logged in) */}
-            {user && (
-              <Link to="/creator" className="hover:text-white">
-                Creator
-              </Link>
-            )}
+            <Link to="/pricing" className="hover:text-white">Pricing</Link>
 
-            {/* Admin links (only if logged in; role check is on route) */}
+            {user && <Link to="/creator" className="hover:text-white">Creator</Link>}
+
             {user && (
               <>
-                <Link to="/admin" className="hover:text-white">
-                  Admin
-                </Link>
-                <Link to="/admin/content" className="hover:text-white">
-                  Approvals
-                </Link>
+                <Link to="/admin" className="hover:text-white">Admin</Link>
+                <Link to="/admin/content" className="hover:text-white">Approvals</Link>
+                <Link to="/admin/creators" className="hover:text-white">Creator Apps</Link>
               </>
             )}
 
@@ -131,18 +113,14 @@ export default function App() {
 
             {user ? (
               <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                }}
+                onClick={async () => { await supabase.auth.signOut(); }}
                 className="text-white/70 hover:text-white underline"
                 title={user.email ?? ""}
               >
                 Logout
               </button>
             ) : (
-              <Link to="/login" className="hover:text-white">
-                Login
-              </Link>
+              <Link to="/login" className="hover:text-white">Login</Link>
             )}
           </nav>
         </header>
@@ -158,6 +136,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/watch/:id" element={<Watch />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/apply-creator" element={<ApplyCreator />} />
 
           {/* Creator */}
           <Route path="/creator" element={<Creator />} />
@@ -167,29 +146,15 @@ export default function App() {
           {/* Admin (ROLE PROTECTED) */}
           <Route
             path="/admin"
-            element={
-              user ? (
-                <AdminGuard>
-                  <Admin />
-                </AdminGuard>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
+            element={user ? <AdminGuard><Admin /></AdminGuard> : <Navigate to="/login" replace />}
           />
-
-          {/* Admin approvals (ROLE PROTECTED) */}
           <Route
             path="/admin/content"
-            element={
-              user ? (
-                <AdminGuard>
-                  <AdminContent />
-                </AdminGuard>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
+            element={user ? <AdminGuard><AdminContent /></AdminGuard> : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/admin/creators"
+            element={user ? <AdminGuard><AdminCreators /></AdminGuard> : <Navigate to="/login" replace />}
           />
         </Routes>
       </div>
