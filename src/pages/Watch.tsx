@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCatalogDb } from "../lib/catalogDb";
 import { supabase } from "../lib/supabase";
+import { recordView } from "../lib/viewsApi";
 
 export default function Watch() {
   const { id } = useParams();
@@ -14,6 +15,13 @@ export default function Watch() {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [videoErr, setVideoErr] = useState<string>("");
 
+  // ✅ Step-9: record a view (silent, won’t break playback)
+  useEffect(() => {
+    if (!item) return;
+    recordView(item.id);
+  }, [item]);
+
+  // Signed URL fetch for private videos
   useEffect(() => {
     (async () => {
       if (!item) return;
@@ -21,16 +29,16 @@ export default function Watch() {
       setSignedUrl(null);
       setVideoErr("");
 
-      // ✅ Old content fallback (public URL)
+      // Old content fallback (public URL)
       if (!item.videoPath && item.videoUrl) return;
 
-      // ✅ No path and no url
+      // No path and no url
       if (!item.videoPath && !item.videoUrl) {
         setVideoErr("No video available.");
         return;
       }
 
-      // ✅ Private video: request signed URL
+      // Private video: request signed URL
       setVideoLoading(true);
       try {
         const { data } = await supabase.auth.getSession();
@@ -61,7 +69,7 @@ export default function Watch() {
         if (!out.signedUrl) throw new Error("Signed URL missing from response");
         setSignedUrl(out.signedUrl);
       } catch (e: any) {
-        // Fallback to legacy URL if present
+        // fallback to legacy url if present
         if (item.videoUrl) {
           setVideoErr("");
           setSignedUrl(null);
@@ -144,9 +152,16 @@ export default function Watch() {
             {item.isFree ? "FREE" : "PREMIUM"}
           </span>
         </div>
+
+        <div className="mt-3">
+          <Link to="/legal" className="text-white/60 hover:text-white underline text-sm">
+            Legal / DMCA
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
+
 
 

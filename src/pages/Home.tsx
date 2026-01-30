@@ -1,9 +1,12 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import ContentCard from "../components/ContentCard";
 import { useCatalogDb } from "../lib/catalogDb";
+import { getTrendingIds } from "../lib/viewsApi";
 
 export default function Home() {
   const { items: catalog, loading, error } = useCatalogDb();
+  const [trending, setTrending] = useState<any[]>([]);
 
   if (loading) {
     return (
@@ -26,16 +29,14 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-black text-white p-6">
         <h1 className="text-3xl font-extrabold">RG Theater</h1>
-        <p className="mt-2 text-white/70">
-          India’s creator-first OTT platform.
-        </p>
+        <p className="mt-2 text-white/70">India’s creator-first OTT platform.</p>
         <p className="mt-4 text-white/60">
           No content yet. Creators can start uploading today.
         </p>
 
         <div className="mt-6 flex gap-4">
           <Link
-            to="/creator/upload"
+            to="/apply-creator"
             className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded font-semibold"
           >
             Become a Creator
@@ -53,11 +54,36 @@ export default function Home() {
   }
 
   const featured = catalog[0];
-  const trending = catalog.slice(0, 10);
-  const free = catalog.filter((x) => x.isFree);
-  const movies = catalog.filter((x) => x.type === "movie");
-  const series = catalog.filter((x) => x.type === "series");
-  const anime = catalog.filter((x) => x.type === "anime");
+  const free = catalog.filter((x: any) => x.isFree);
+  const movies = catalog.filter((x: any) => x.type === "movie");
+  const series = catalog.filter((x: any) => x.type === "series");
+  const anime = catalog.filter((x: any) => x.type === "anime");
+
+  // ✅ Step-9: compute real trending from last 7 days
+  useEffect(() => {
+    (async () => {
+      try {
+        const ids = await getTrendingIds(7, 10);
+
+        if (!ids.length) {
+          setTrending(catalog.slice(0, 10));
+          return;
+        }
+
+        const map = new Map(catalog.map((x: any) => [x.id, x]));
+        const items = ids.map((id) => map.get(id)).filter(Boolean) as any[];
+
+        // fill remaining slots if trending less
+        const fill = catalog
+          .filter((x: any) => !ids.includes(x.id))
+          .slice(0, Math.max(0, 10 - items.length));
+
+        setTrending([...items, ...fill]);
+      } catch {
+        setTrending(catalog.slice(0, 10));
+      }
+    })();
+  }, [catalog]);
 
   return (
     <div className="bg-black text-white min-h-screen">
@@ -78,8 +104,7 @@ export default function Home() {
             </p>
 
             <p className="mt-2 text-white/60">
-              Watch original anime, indie web series, and short films
-              created by independent Indian creators.
+              Watch original anime, indie web series, and short films created by independent creators.
             </p>
 
             <div className="mt-6 flex gap-4">
@@ -91,7 +116,7 @@ export default function Home() {
               </Link>
 
               <Link
-                to="/creator/upload"
+                to="/apply-creator"
                 className="bg-white/10 px-6 py-3 rounded-lg font-semibold hover:bg-white/20"
               >
                 Become a Creator
@@ -120,7 +145,7 @@ export default function Home() {
 }
 
 function Row({ title, items }: { title: string; items: any[] }) {
-  if (items.length === 0) return null;
+  if (!items || items.length === 0) return null;
 
   return (
     <div>
@@ -135,4 +160,5 @@ function Row({ title, items }: { title: string; items: any[] }) {
     </div>
   );
 }
+
 
