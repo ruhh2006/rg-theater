@@ -25,3 +25,8 @@ export async function isCreator(): Promise<boolean> {
   const role = await getMyRole();
   return role === "creator" || role === "admin";
 }
+
+/** ✅ NEW: Refresh role (same as getMyRole but kept for readability) */
+export async function refreshMyRole(): Promise<Role> {
+  return await getMyRole();
+}

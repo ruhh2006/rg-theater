@@ -24,7 +24,12 @@ export default function AdminCreators() {
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) setApps(data as AppRow[]);
+    if (error) {
+      alert("❌ Failed to load: " + error.message);
+      setApps([]);
+    } else {
+      setApps((data ?? []) as AppRow[]);
+    }
     setLoading(false);
   };
 
@@ -34,21 +39,37 @@ export default function AdminCreators() {
 
   const approve = async (row: AppRow) => {
     try {
-      // ✅ 1) UPSERT profile role = creator (works even if profile row missing)
+      // ✅ 1) Role = creator in profiles
       const { error: upsertErr } = await supabase
         .from("profiles")
         .upsert(
-          {
-            id: row.user_id,
-            email: row.email,
-            role: "creator",
-          },
+          { id: row.user_id, email: row.email, role: "creator" },
           { onConflict: "id" }
         );
 
       if (upsertErr) throw new Error("Role update failed: " + upsertErr.message);
 
-      // ✅ 2) Update application status = approved
+      // ✅ 2) Auto-create creator_public row (so /creators is never empty)
+      const displayName =
+        (row.full_name ?? (row.email ? row.email.split("@")[0] : "Creator")).trim() ||
+        "Creator";
+
+      const { error: pubErr } = await supabase
+        .from("creator_public")
+        .upsert(
+          {
+            id: row.user_id,
+            display_name: displayName,
+            bio: row.message ?? null,
+            portfolio_url: row.portfolio_url ?? null,
+            avatar_url: null,
+          },
+          { onConflict: "id" }
+        );
+
+      if (pubErr) throw new Error("creator_public failed: " + pubErr.message);
+
+      // ✅ 3) Mark application approved
       const { error: appErr } = await supabase
         .from("creator_applications")
         .update({ status: "approved", rejection_reason: null })
@@ -56,8 +77,9 @@ export default function AdminCreators() {
 
       if (appErr) throw new Error("Application update failed: " + appErr.message);
 
-      alert("✅ Approved! User is now CREATOR.");
+      alert("✅ Approved + public creator profile created!");
       await load();
+      window.location.reload();
     } catch (e: any) {
       alert("❌ " + (e.message ?? "Approve failed"));
     }
@@ -67,12 +89,12 @@ export default function AdminCreators() {
     const reason = prompt("Reject reason (creator will see):");
     if (!reason || !reason.trim()) return alert("Reason required.");
 
-    const { error: appErr } = await supabase
+    const { error } = await supabase
       .from("creator_applications")
       .update({ status: "rejected", rejection_reason: reason.trim() })
       .eq("id", row.id);
 
-    if (appErr) return alert("❌ Reject failed: " + appErr.message);
+    if (error) return alert("❌ Reject failed: " + error.message);
 
     alert("Rejected.");
     await load();
@@ -92,7 +114,7 @@ export default function AdminCreators() {
     <div className="min-h-screen bg-black text-white p-6">
       <h1 className="text-3xl font-extrabold">Admin: Creator Applications</h1>
       <p className="mt-2 text-white/70 text-sm">
-        Approve creators (sets role=creator) or reject with reason.
+        Approve creators (role=creator) + auto-create public profile.
       </p>
 
       <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -101,10 +123,7 @@ export default function AdminCreators() {
         ) : (
           <div className="space-y-3">
             {pending.map((x) => (
-              <div
-                key={x.id}
-                className="border border-white/10 rounded-xl bg-black/30 p-4"
-              >
+              <div key={x.id} className="border border-white/10 rounded-xl bg-black/30 p-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="font-semibold">
@@ -113,6 +132,7 @@ export default function AdminCreators() {
                         ({x.email ?? "no email"})
                       </span>
                     </div>
+
                     <div className="text-xs text-white/60 mt-1">
                       Portfolio:{" "}
                       <a
@@ -124,10 +144,9 @@ export default function AdminCreators() {
                         {x.portfolio_url ?? "missing"}
                       </a>
                     </div>
+
                     {x.message && (
-                      <div className="mt-2 text-sm text-white/70">
-                        {x.message}
-                      </div>
+                      <div className="mt-2 text-sm text-white/70">{x.message}</div>
                     )}
                   </div>
 

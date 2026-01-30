@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { isCreator } from "../lib/roles";
+import { getMyRole, type Role } from "../lib/roles";
 import { uploadFileToBucket } from "../lib/storage";
 
-const MAX_VIDEO_MB = 50; // ✅ Supabase-safe limit
+const MAX_VIDEO_MB = 50;
+
+type AppRow = {
+  status: "pending" | "approved" | "rejected";
+  rejection_reason: string | null;
+};
 
 export default function CreatorUpload() {
   const nav = useNavigate();
-  const [allowed, setAllowed] = useState<boolean | null>(null);
 
+  const [loadingGate, setLoadingGate] = useState(true);
+  const [role, setRole] = useState<Role>("user");
+  const [appStatus, setAppStatus] = useState<AppRow | null>(null);
+
+  // Upload form state
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"movie" | "series" | "anime">("series");
   const [language, setLanguage] = useState<"Hindi" | "English" | "Japanese">("Hindi");
@@ -20,41 +29,148 @@ export default function CreatorUpload() {
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  // Legal / rights confirmation
   const TERMS_VERSION = "v1";
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
 
+  // ✅ Gate check: role + application status
   useEffect(() => {
-    isCreator().then(setAllowed);
+    (async () => {
+      setLoadingGate(true);
+
+      const { data: u } = await supabase.auth.getUser();
+      const user = u.user;
+
+      if (!user) {
+        setLoadingGate(false);
+        return;
+      }
+
+      const r = await getMyRole();
+      setRole(r);
+
+      // If not creator/admin, fetch application status (optional)
+      if (r !== "creator" && r !== "admin") {
+        const { data } = await supabase
+          .from("creator_applications")
+          .select("status, rejection_reason")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        setAppStatus((data ?? null) as AppRow | null);
+      }
+
+      setLoadingGate(false);
+    })();
   }, []);
 
-  if (allowed === null) {
+  // Not logged in
+  if (!loadingGate && role === "user") {
+    // if user not logged in, getMyRole returns "user", but we should check auth:
+    // easiest: if no session, redirect login
+    // (supabase.auth.getUser() already handled above, but we keep safety)
+  }
+
+  // If not logged in, redirect to login
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      setIsLoggedIn(!!data.user);
+      setAuthChecked(true);
+    })();
+  }, []);
+
+  if (!authChecked) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Checking creator access...
+        Loading...
       </div>
     );
   }
 
-  if (!allowed) return <Navigate to="/" replace />;
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
 
+  // ✅ If user is NOT creator/admin -> block upload and show status UI
+  if (!loadingGate && role !== "creator" && role !== "admin") {
+    const status = appStatus?.status ?? "none";
+
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <div className="max-w-xl w-full border border-white/10 bg-white/5 rounded-2xl p-6">
+          <h1 className="text-2xl font-extrabold">Creator Upload Locked</h1>
+          <p className="mt-2 text-white/70">
+            Uploading is available only for approved creators.
+          </p>
+
+          {status === "pending" && (
+            <div className="mt-4 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4">
+              <div className="text-yellow-300 font-semibold">⏳ Application under review</div>
+              <div className="mt-2 text-white/70 text-sm">
+                Please wait. Admin will approve soon.
+              </div>
+            </div>
+          )}
+
+          {status === "rejected" && (
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
+              <div className="text-red-300 font-semibold">❌ Application rejected</div>
+              <div className="mt-2 text-white/70 text-sm">
+                Reason: {appStatus?.rejection_reason ?? "No reason provided"}
+              </div>
+              <div className="mt-4">
+                <Link
+                  to="/apply-creator"
+                  className="inline-block bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg font-semibold"
+                >
+                  Re-Apply as Creator
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {status === "none" && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
+              <div className="text-white font-semibold">You haven’t applied yet</div>
+              <div className="mt-2 text-white/70 text-sm">
+                Apply as creator to get upload access.
+              </div>
+              <div className="mt-4">
+                <Link
+                  to="/apply-creator"
+                  className="inline-block bg-red-600 hover:bg-red-500 px-4 py-2 rounded-lg font-semibold"
+                >
+                  Apply as Creator
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 text-sm text-white/60">
+            Tip: Once approved, refresh the page and upload will unlock automatically.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Creator/Admin upload form (normal)
   const submit = async () => {
     if (!title.trim()) return alert("Enter title");
     if (!posterFile) return alert("Select a poster image file");
     if (!videoFile) return alert("Select a video file");
-    if (!rightsConfirmed)
-      return alert("You must confirm you own the rights before uploading.");
+    if (!rightsConfirmed) return alert("You must confirm you own the rights before uploading.");
 
-    // ✅ 50MB enforcement (matches Supabase)
     if (videoFile.size > MAX_VIDEO_MB * 1024 * 1024) {
       return alert(
         `Video size exceeds ${MAX_VIDEO_MB} MB.\n\nTip: Compress to 1080p (H.264) using HandBrake.`
       );
     }
 
-    setLoading(true);
+    setUploading(true);
     try {
       const { data: userRes } = await supabase.auth.getUser();
       const user = userRes.user;
@@ -64,7 +180,7 @@ export default function CreatorUpload() {
         return;
       }
 
-      // Upload poster (PUBLIC bucket)
+      // Upload poster
       const posterPath = `${user.id}/${Date.now()}-${posterFile.name}`;
       const posterUrl = await uploadFileToBucket({
         bucket: "posters",
@@ -72,7 +188,7 @@ export default function CreatorUpload() {
         path: posterPath,
       });
 
-      // Upload video (PRIVATE bucket)
+      // Upload video (private bucket)
       const videoPath = `${user.id}/${Date.now()}-${videoFile.name}`;
       await uploadFileToBucket({
         bucket: "videos",
@@ -104,7 +220,7 @@ export default function CreatorUpload() {
     } catch (e: any) {
       alert("❌ " + (e.message ?? "Upload failed"));
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -179,18 +295,12 @@ export default function CreatorUpload() {
         </div>
 
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={isFree}
-            onChange={(e) => setIsFree(e.target.checked)}
-          />
+          <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
           Free content
         </label>
 
         <div>
-          <label className="text-xs text-white/60">
-            Poster Image (jpg/png)
-          </label>
+          <label className="text-xs text-white/60">Poster Image (jpg/png)</label>
           <input
             type="file"
             accept="image/*"
@@ -211,15 +321,12 @@ export default function CreatorUpload() {
           />
         </div>
 
-        {/* Compression tips */}
         <div className="rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-white/70">
           <div className="font-semibold mb-1">Compression Tips (Recommended)</div>
           <ul className="list-disc ml-4 space-y-1">
             <li>Use <b>HandBrake</b> (free)</li>
             <li>Preset: <b>Fast 1080p30</b></li>
-            <li>Format: <b>MP4</b>, Codec: <b>H.264</b></li>
-            <li>Avg bitrate: <b>1500–2500 kbps</b></li>
-            <li>Audio: <b>AAC 128 kbps</b></li>
+            <li>Format: <b>MP4</b>, Codec: <b>H.264</b>, Audio: <b>AAC</b></li>
           </ul>
         </div>
 
@@ -242,11 +349,11 @@ export default function CreatorUpload() {
         </div>
 
         <button
-          disabled={loading}
+          disabled={uploading}
           onClick={submit}
           className="w-full bg-red-600 hover:bg-red-500 py-3 rounded-lg font-semibold disabled:opacity-50"
         >
-          {loading ? "Uploading..." : "Submit for Review"}
+          {uploading ? "Uploading..." : "Submit for Review"}
         </button>
       </div>
     </div>

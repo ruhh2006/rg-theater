@@ -3,20 +3,22 @@ import { Link, Navigate } from "react-router-dom";
 import { isCreator } from "../lib/roles";
 import { fetchMyUploads, type DbContentRow } from "../lib/contentApi";
 
+function badgeClass(status: DbContentRow["status"]) {
+  if (status === "approved") return "bg-green-500/20 text-green-300 border-green-500/20";
+  if (status === "pending") return "bg-yellow-500/20 text-yellow-300 border-yellow-500/20";
+  return "bg-red-500/20 text-red-300 border-red-500/20";
+}
+
+function badgeLabel(status: DbContentRow["status"]) {
+  if (status === "approved") return "APPROVED";
+  if (status === "pending") return "PENDING";
+  return "REJECTED";
+}
+
 function StatusBadge({ status }: { status: DbContentRow["status"] }) {
-  const cls =
-    status === "approved"
-      ? "bg-green-500/20 text-green-300 border-green-500/20"
-      : status === "pending"
-      ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/20"
-      : "bg-red-500/20 text-red-300 border-red-500/20";
-
-  const label =
-    status === "approved" ? "APPROVED" : status === "pending" ? "PENDING" : "REJECTED";
-
   return (
-    <span className={`text-[11px] px-2 py-1 rounded border ${cls}`}>
-      {label}
+    <span className={"text-[11px] px-2 py-1 rounded border " + badgeClass(status)}>
+      {badgeLabel(status)}
     </span>
   );
 }
@@ -73,12 +75,20 @@ export default function Creator() {
           </p>
         </div>
 
-        <Link
-          to="/creator/upload"
-          className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg font-semibold"
-        >
-          Upload Content
-        </Link>
+        <div className="flex gap-3 flex-wrap">
+          <Link
+            to="/creator/profile"
+            className="bg-white/10 hover:bg-white/20 px-4 py-3 rounded-lg font-semibold"
+          >
+            Edit Profile
+          </Link>
+          <Link
+            to="/creator/upload"
+            className="bg-red-600 hover:bg-red-500 px-6 py-3 rounded-lg font-semibold"
+          >
+            Upload Content
+          </Link>
+        </div>
       </div>
 
       {/* Stats */}
@@ -115,7 +125,7 @@ export default function Creator() {
           <div className="mt-6 text-white/70">Loading your uploads...</div>
         ) : uploads.length === 0 ? (
           <div className="mt-6 text-white/70">
-            You have not uploaded anything yet. Click <b>Upload Content</b> to submit your first video.
+            No uploads yet. Click <b>Upload Content</b> to submit your first video.
           </div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -124,7 +134,6 @@ export default function Creator() {
                 key={x.id}
                 className="flex items-center justify-between gap-4 border border-white/10 rounded-xl bg-black/30 p-4"
               >
-                {/* left info */}
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-black">
                     <img
@@ -143,7 +152,8 @@ export default function Creator() {
 
                     {x.status === "rejected" && (
                       <div className="mt-2 text-xs text-red-300">
-                       Rejected — {x.rejection_reason ? `Reason: ${x.rejection_reason}` : "No reason given."}
+                        Rejected —{" "}
+                        {x.rejection_reason ? `Reason: ${x.rejection_reason}` : "No reason given."}
                       </div>
                     )}
 
@@ -155,7 +165,6 @@ export default function Creator() {
                   </div>
                 </div>
 
-                {/* right controls */}
                 <div className="flex items-center gap-3">
                   {x.status === "rejected" && (
                     <Link

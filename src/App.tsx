@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
+import { isAdmin, isCreator, getMyRole, type Role } from "./lib/roles";
 
 /* Pages */
 import Home from "./pages/Home";
@@ -12,64 +13,114 @@ import Login from "./pages/Login";
 import Watch from "./pages/Watch";
 import Search from "./pages/Search";
 
-import Admin from "./pages/Admin";
-import AdminContent from "./pages/AdminContent";
-import AdminCreators from "./pages/AdminCreators";
-
+/* Creator system pages */
+import ApplyCreator from "./pages/ApplyCreator";
 import Creator from "./pages/Creator";
 import CreatorUpload from "./pages/CreatorUpload";
-import Resubmit from "./pages/Resubmit";
-import ApplyCreator from "./pages/ApplyCreator";
+import Creators from "./pages/Creators";
+import CreatorProfile from "./pages/CreatorProfile";
+import CreatorProfilePublic from "./pages/CreatorProfilePublic";
+
+/* Admin pages */
+import Admin from "./pages/Admin";
+import Approvals from "./pages/Approvals";
+import AdminCreators from "./pages/AdminCreators";
+import AdminReports from "./pages/AdminReports";
+
+/* Legal */
+import Legal from "./pages/Legal";
 
 /* Components */
 import NavSearch from "./components/NavSearch";
 
-/* Admin role check */
-import { isAdmin } from "./lib/admin";
-
-/* Protect admin route */
-function AdminGuard({ children }: { children: ReactNode }) {
+/* Protect admin routes */
+function AdminGuard({ children }: { children: React.ReactNode }) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    isAdmin().then(setAllowed);
+    isAdmin().then(setAllowed).catch(() => setAllowed(false));
   }, []);
 
   if (allowed === null) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        Checking permissions...
+        Checking admin access...
       </div>
     );
   }
+  if (!allowed) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
 
-  if (!allowed) {
-    return <Navigate to="/" replace />;
+/* Protect creator routes */
+function CreatorGuard({ children }: { children: React.ReactNode }) {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isCreator().then(setAllowed).catch(() => setAllowed(false));
+  }, []);
+
+  if (allowed === null) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        Checking creator access...
+      </div>
+    );
   }
-
+  if (!allowed) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<Role>("user");
+  const [booting, setBooting] = useState(true);
+
+  const refreshRole = async () => {
+    try {
+      const r = await getMyRole();
+      setRole(r);
+    } catch {
+      setRole("user");
+    }
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+
+        const u = data.session?.user ?? null;
+        setUser(u);
+        setBooting(false);
+
+        if (u) refreshRole();
+        else setRole("user");
+      } catch {
+        if (cancelled) return;
+        setUser(null);
+        setRole("user");
+        setBooting(false);
+      }
+    })();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) refreshRole();
+      else setRole("user");
     });
 
     return () => {
+      cancelled = true;
       listener.subscription.unsubscribe();
     };
   }, []);
 
-  if (loading) {
+  if (booting) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         Loading...
@@ -77,12 +128,17 @@ export default function App() {
     );
   }
 
+  const showApplyCreator = !user || (role !== "creator" && role !== "admin");
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-black text-white">
         {/* NAVBAR */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 gap-4">
-          <Link to="/" className="text-2xl font-extrabold text-red-600 no-underline whitespace-nowrap">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 gap-4 flex-wrap">
+          <Link
+            to="/"
+            className="text-2xl font-extrabold text-red-600 no-underline whitespace-nowrap"
+          >
             RG Theater
           </Link>
 
@@ -92,20 +148,28 @@ export default function App() {
             <Link to="/series" className="hover:text-white">Series</Link>
             <Link to="/anime" className="hover:text-white">Anime</Link>
 
-            {/* Creator apply (public) */}
-            <Link to="/apply-creator" className="hover:text-white">
-              Apply as Creator
-            </Link>
+            <Link to="/creators" className="hover:text-white">Creators</Link>
+
+            {showApplyCreator && (
+              <Link to="/apply-creator" className="hover:text-white">
+                Apply as Creator
+              </Link>
+            )}
 
             <Link to="/pricing" className="hover:text-white">Pricing</Link>
+            <Link to="/legal" className="hover:text-white">Legal</Link>
 
-            {user && <Link to="/creator" className="hover:text-white">Creator</Link>}
-
+            {/* Logged-in only links */}
             {user && (
               <>
+                <Link to="/creator" className="hover:text-white">Creator</Link>
+                <Link to="/creator/profile" className="hover:text-white">Profile</Link>
+
+                {/* Admin menu (shows only if admin by guard anyway, but link is ok) */}
                 <Link to="/admin" className="hover:text-white">Admin</Link>
-                <Link to="/admin/content" className="hover:text-white">Approvals</Link>
-                <Link to="/admin/creators" className="hover:text-white">Creator Apps</Link>
+                <Link to="/approvals" className="hover:text-white">Approvals</Link>
+                <Link to="/creator-apps" className="hover:text-white">Creator Apps</Link>
+                <Link to="/reports" className="hover:text-white">Reports</Link>
               </>
             )}
 
@@ -113,7 +177,9 @@ export default function App() {
 
             {user ? (
               <button
-                onClick={async () => { await supabase.auth.signOut(); }}
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                }}
                 className="text-white/70 hover:text-white underline"
                 title={user.email ?? ""}
               >
@@ -133,36 +199,111 @@ export default function App() {
           <Route path="/series" element={<Series />} />
           <Route path="/anime" element={<Anime />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/legal" element={<Legal />} />
           <Route path="/login" element={<Login />} />
           <Route path="/watch/:id" element={<Watch />} />
           <Route path="/search" element={<Search />} />
+
+          {/* Public Creator pages */}
+          <Route path="/creators" element={<Creators />} />
+          <Route path="/c/:id" element={<CreatorProfilePublic />} />
+
+          {/* Apply as creator */}
           <Route path="/apply-creator" element={<ApplyCreator />} />
 
-          {/* Creator */}
-          <Route path="/creator" element={<Creator />} />
-          <Route path="/creator/upload" element={<CreatorUpload />} />
-          <Route path="/creator/resubmit/:id" element={<Resubmit />} />
+          {/* Creator private */}
+          <Route
+            path="/creator"
+            element={
+              user ? (
+                <CreatorGuard>
+                  <Creator />
+                </CreatorGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+          <Route
+            path="/creator/upload"
+            element={
+              user ? (
+                <CreatorGuard>
+                  <CreatorUpload />
+                </CreatorGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+          <Route
+            path="/creator/profile"
+            element={
+              user ? (
+                <CreatorGuard>
+                  <CreatorProfile />
+                </CreatorGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
 
-          {/* Admin (ROLE PROTECTED) */}
+          {/* Admin */}
           <Route
             path="/admin"
-            element={user ? <AdminGuard><Admin /></AdminGuard> : <Navigate to="/login" replace />}
+            element={
+              user ? (
+                <AdminGuard>
+                  <Admin />
+                </AdminGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
           />
           <Route
-            path="/admin/content"
-            element={user ? <AdminGuard><AdminContent /></AdminGuard> : <Navigate to="/login" replace />}
+            path="/approvals"
+            element={
+              user ? (
+                <AdminGuard>
+                  <Approvals />
+                </AdminGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
           />
           <Route
-            path="/admin/creators"
-            element={user ? <AdminGuard><AdminCreators /></AdminGuard> : <Navigate to="/login" replace />}
+            path="/creator-apps"
+            element={
+              user ? (
+                <AdminGuard>
+                  <AdminCreators />
+                </AdminGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
           />
+          <Route
+            path="/reports"
+            element={
+              user ? (
+                <AdminGuard>
+                  <AdminReports />
+                </AdminGuard>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </BrowserRouter>
   );
 }
-
-
-
-
 

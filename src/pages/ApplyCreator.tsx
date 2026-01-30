@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getMyRole, type Role } from "../lib/roles";
 
 type AppRow = {
   id: string;
@@ -16,6 +17,8 @@ type AppRow = {
 
 export default function ApplyCreator() {
   const nav = useNavigate();
+
+  const [role, setRole] = useState<Role | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
@@ -29,19 +32,26 @@ export default function ApplyCreator() {
 
   const load = async () => {
     setLoading(true);
+
     const { data: u } = await supabase.auth.getUser();
     const user = u.user;
 
     if (!user) {
-      setLoading(false);
+      setRole(null);
       setUserId(null);
       setUserEmail(null);
+      setLoading(false);
       return;
     }
 
     setUserId(user.id);
     setUserEmail(user.email ?? null);
 
+    // ✅ fetch role
+    const r = await getMyRole();
+    setRole(r);
+
+    // ✅ fetch my application
     const { data, error } = await supabase
       .from("creator_applications")
       .select("*")
@@ -65,9 +75,32 @@ export default function ApplyCreator() {
     load();
   }, []);
 
+  // not logged in -> go login
   if (!loading && !userId) {
     return <Navigate to="/login" replace />;
   }
+
+  // ✅ creator/admin should not apply again
+  if (!loading && (role === "creator" || role === "admin")) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <div className="max-w-lg text-center border border-white/10 bg-white/5 rounded-2xl p-6">
+          <h1 className="text-2xl font-extrabold">You are already a Creator 🎉</h1>
+          <p className="mt-2 text-white/70">
+            You don’t need to apply again. Go to your Creator Dashboard to upload content.
+          </p>
+          <Link
+            to="/creator"
+            className="inline-block mt-5 bg-red-600 hover:bg-red-500 px-5 py-3 rounded-lg font-semibold"
+          >
+            Go to Creator Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const status = appRow?.status ?? "none";
 
   const submit = async () => {
     if (!userId) return;
@@ -86,7 +119,6 @@ export default function ApplyCreator() {
         rejection_reason: null,
       };
 
-      // upsert (one per user)
       const { error } = await supabase
         .from("creator_applications")
         .upsert(payload, { onConflict: "user_id" });
@@ -108,8 +140,6 @@ export default function ApplyCreator() {
     );
   }
 
-  const status = appRow?.status ?? "none";
-
   return (
     <div className="min-h-screen bg-black text-white p-6 flex justify-center">
       <div className="w-full max-w-2xl">
@@ -121,8 +151,17 @@ export default function ApplyCreator() {
         {/* Status */}
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
           <div className="text-white/70">Status:</div>
-          {status === "none" && <div className="text-yellow-300 font-semibold">Not applied</div>}
-          {status === "pending" && <div className="text-yellow-300 font-semibold">Pending review</div>}
+
+          {status === "none" && (
+            <div className="text-yellow-300 font-semibold">Not applied</div>
+          )}
+
+          {status === "pending" && (
+            <div className="text-yellow-300 font-semibold">
+              Pending review (we’ll respond soon)
+            </div>
+          )}
+
           {status === "approved" && (
             <div className="text-green-300 font-semibold">
               Approved ✅ — You can upload now!
@@ -136,6 +175,7 @@ export default function ApplyCreator() {
               </div>
             </div>
           )}
+
           {status === "rejected" && (
             <div className="text-red-300 font-semibold">
               Rejected ❌
@@ -143,7 +183,7 @@ export default function ApplyCreator() {
                 Reason: {appRow?.rejection_reason ?? "No reason provided"}
               </div>
               <div className="mt-2 text-white/70 font-normal">
-                You can update portfolio/message and submit again.
+                Update portfolio/message and submit again.
               </div>
             </div>
           )}
@@ -197,3 +237,4 @@ export default function ApplyCreator() {
     </div>
   );
 }
+
